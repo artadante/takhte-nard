@@ -1,11 +1,14 @@
 /* dice3D.ts
  *
  * 3D Projective Physics & Rendering Engine for Tumbling Dice:
+ * - Proportional compact dice sizing (~50px at 1920 width)
+ * - Directional throwing: Human throws from BOTTOM edge upward, Opponent from TOP edge downward
  * - Parabolic ballistic arc with altitude & perspective scale
  * - Realistic double bounce physics (impact, secondary bounce, settle)
  * - Dynamic 3D rotation (pitch, yaw, roll) with spin decay
+ * - Beveled rounded corners on all rotating 3D faces matching landed state
  * - Smooth ground shadow that scales & blurs with altitude
- * - Cube faces with ambient + directional lighting
+ * - Ivory beveled material with ambient + directional lighting
  * - High-contrast pips with exact geometric coordinates
  * - Settle on target values with clear face-up display
  * - Consumed die dimming / red cross for used moves
@@ -33,7 +36,7 @@ export class BoardDiceState {
   public spin_yaw2: number;
   public start_time_us: number;
 
-  constructor(color: CheckerColor, roll: DiceRoll, duration: number = 1.35) {
+  constructor(color: CheckerColor, roll: DiceRoll, duration: number = 1.30) {
     this.id = Math.random().toString(36).substring(2, 9);
     this.color = color;
     this.roll = roll;
@@ -42,19 +45,21 @@ export class BoardDiceState {
 
     const randRange = (min: number, max: number) => min + Math.random() * (max - min);
 
-    this.jitter_x1 = randRange(-8.0, 8.0);
-    this.jitter_y1 = randRange(-6.0, 6.0);
-    this.jitter_yaw1 = randRange(-0.15, 0.15);
-    this.jitter_x2 = randRange(-8.0, 8.0);
-    this.jitter_y2 = randRange(-6.0, 6.0);
-    this.jitter_yaw2 = randRange(-0.15, 0.15);
+    this.jitter_x1 = randRange(-6.0, 6.0);
+    this.jitter_y1 = randRange(-5.0, 5.0);
+    this.jitter_yaw1 = randRange(-0.14, 0.14);
+    this.jitter_x2 = randRange(-6.0, 6.0);
+    this.jitter_y2 = randRange(-5.0, 5.0);
+    this.jitter_yaw2 = randRange(-0.14, 0.14);
 
-    this.spin_pitch1 = randRange(1.6, 2.2);
-    this.spin_roll1 = randRange(0.3, 0.65);
-    this.spin_yaw1 = randRange(0.25, 0.55);
-    this.spin_pitch2 = randRange(1.4, 2.0);
-    this.spin_roll2 = randRange(-0.65, -0.3);
-    this.spin_yaw2 = randRange(-0.55, -0.25);
+    const isWhite = color === 'white';
+    // White tosses forward/upward, Black tosses forward/downward
+    this.spin_pitch1 = (isWhite ? 1 : -1) * randRange(1.6, 2.2);
+    this.spin_roll1 = randRange(0.25, 0.55);
+    this.spin_yaw1 = randRange(0.20, 0.45);
+    this.spin_pitch2 = (isWhite ? 1 : -1) * randRange(1.4, 2.0);
+    this.spin_roll2 = randRange(-0.55, -0.25);
+    this.spin_yaw2 = randRange(-0.45, -0.20);
 
     this.start_time_us = performance.now() * 1000;
   }
@@ -94,8 +99,8 @@ export class Dice3D {
     const rawT = Math.min(1.0, Math.max(0.0, elapsed / state.duration));
     const isPlayer = state.color === 'white';
 
-    // Die size proportional to board (approx 68px at 1920 width)
-    const dieSize = Math.max(38, Math.min(boardWidth * 0.042, boardHeight * 0.065));
+    // Compact die size (~50px at 1920 width, beautifully proportional to 100px checkers)
+    const dieSize = Math.max(26, Math.min(boardWidth * 0.026, boardHeight * 0.042));
 
     // Landing center: Player lands in right inner board, AI lands in left inner board
     const targetCenterX = boardWidth * (isPlayer ? 0.65 : 0.35);
@@ -111,11 +116,13 @@ export class Dice3D {
     const targetYaw2 = 0.16 + state.jitter_yaw2;
 
     if (rawT < 1.0) {
-      // --- Rolling / Tumbling Animation ---
-      const start1X = isPlayer ? boardWidth + 80.0 : -80.0;
-      const start1Y = targetCenterY + 60.0;
-      const start2X = isPlayer ? boardWidth + 120.0 : -120.0;
-      const start2Y = targetCenterY - 60.0;
+      // --- Directional Throwing Animation ---
+      // Human (white) throws from BOTTOM edge upward
+      // Opponent (black) throws from TOP edge downward
+      const start1X = targetCenterX - 20.0 + state.jitter_x1 * 1.5;
+      const start1Y = isPlayer ? boardHeight + 90.0 : -90.0;
+      const start2X = targetCenterX + 25.0 + state.jitter_x2 * 1.5;
+      const start2Y = isPlayer ? boardHeight + 120.0 : -120.0;
 
       // Die 1
       const effT1 = Math.min(1.0, rawT * 1.02);
@@ -131,8 +138,8 @@ export class Dice3D {
         isPlayer
       );
       const scale1 = 1.0 + motion1.scaleProgress;
-      const shadowRad1 = 4.0 + motion1.altitude * 0.35;
-      const shadowOp1 = effT1 >= 0.82 ? 0.35 : 0.12 + 0.22 * (1.0 - Math.min(1.0, motion1.altitude / 85.0));
+      const shadowRad1 = 3.5 + motion1.altitude * 0.30;
+      const shadowOp1 = effT1 >= 0.82 ? 0.35 : 0.12 + 0.22 * (1.0 - Math.min(1.0, motion1.altitude / 75.0));
 
       // Die 2
       const effT2 = Math.min(1.0, Math.max(0.0, (rawT - 0.06) / 0.94));
@@ -148,28 +155,27 @@ export class Dice3D {
         isPlayer
       );
       const scale2 = 1.0 + motion2.scaleProgress;
-      const shadowRad2 = 4.0 + motion2.altitude * 0.35;
-      const shadowOp2 = effT2 >= 0.82 ? 0.35 : 0.12 + 0.22 * (1.0 - Math.min(1.0, motion2.altitude / 85.0));
+      const shadowRad2 = 3.5 + motion2.altitude * 0.30;
+      const shadowOp2 = effT2 >= 0.82 ? 0.35 : 0.12 + 0.22 * (1.0 - Math.min(1.0, motion2.altitude / 75.0));
 
-      // Draw Shadows
-      Dice3D.drawDieShadow(ctx, x1, y1 + motion1.altitude + 3, dieSize * scale1, shadowRad1, shadowOp1);
-      Dice3D.drawDieShadow(ctx, x2, y2 + motion2.altitude + 3, dieSize * scale2, shadowRad2, shadowOp2);
+      // 1. Shadows on the felt board
+      Dice3D.drawDieShadow(ctx, x1, y1 + motion1.altitude + 2.5, dieSize * scale1, shadowRad1, shadowOp1);
+      Dice3D.drawDieShadow(ctx, x2, y2 + motion2.altitude + 2.5, dieSize * scale2, shadowRad2, shadowOp2);
 
-      // Draw 3D Cubes
+      // 2. 3D Tumbling Cubes with Rounded Corners
       Dice3D.drawProjected3DCube(ctx, x1, y1, dieSize * scale1, state.roll.die1, rot1.pitch, rot1.yaw, rot1.roll);
       Dice3D.drawProjected3DCube(ctx, x2, y2, dieSize * scale2, state.roll.die2, rot2.pitch, rot2.yaw, rot2.roll);
     } else {
-      // --- Landed / Resting Dice on the Board ---
+      // --- Landed / Resting Dice on the Board (Identical Appearance & Rounded Corners) ---
       state.is_rolling = false;
 
-      // Determine which dice have been consumed
       const roll1 = state.roll.die1;
       const roll2 = state.roll.die2;
       const isDouble = state.roll.isDouble;
 
       if (isDouble) {
         // Double: 4 dice display (2x2 cluster)
-        const dSize = dieSize * 0.88;
+        const dSize = dieSize * 0.90;
         const offset = dSize * 0.65;
         const positions = [
           { x: targetCenterX - offset, y: targetCenterY - offset },
@@ -184,7 +190,6 @@ export class Dice3D {
         });
       } else {
         // Standard 2 dice
-        // Check availability
         let isDie1Avail = false;
         let isDie2Avail = false;
         if (remainingDice.length === 2) {
@@ -205,7 +210,43 @@ export class Dice3D {
   }
 
   /**
-   * Draws a settled flat die with clean 3D bevel and clear pips
+   * Smoothly draws a quadrilateral face with rounded beveled corners using quadratic bezier curves
+   */
+  public static drawRoundedQuad(
+    ctx: CanvasRenderingContext2D,
+    q0: { x: number; y: number },
+    q1: { x: number; y: number },
+    q2: { x: number; y: number },
+    q3: { x: number; y: number },
+    radiusRatio: number = 0.18
+  ): void {
+    const pts = [q0, q1, q2, q3];
+    ctx.beginPath();
+    for (let i = 0; i < 4; i++) {
+      const prev = pts[(i + 3) % 4];
+      const curr = pts[i];
+      const next = pts[(i + 1) % 4];
+
+      // Point along incoming edge towards curr
+      const inX = curr.x + (prev.x - curr.x) * radiusRatio;
+      const inY = curr.y + (prev.y - curr.y) * radiusRatio;
+
+      // Point along outgoing edge from curr
+      const outX = curr.x + (next.x - curr.x) * radiusRatio;
+      const outY = curr.y + (next.y - curr.y) * radiusRatio;
+
+      if (i === 0) {
+        ctx.moveTo(inX, inY);
+      } else {
+        ctx.lineTo(inX, inY);
+      }
+      ctx.quadraticCurveTo(curr.x, curr.y, outX, outY);
+    }
+    ctx.closePath();
+  }
+
+  /**
+   * Draws a settled flat die with clean rounded bevel and clear pips (matches 3D rotating state)
    */
   public static drawLandedDie(
     ctx: CanvasRenderingContext2D,
@@ -225,12 +266,12 @@ export class Dice3D {
 
     // 1. Soft drop shadow on felt
     ctx.save();
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.45)';
-    ctx.shadowBlur = 10;
-    ctx.shadowOffsetX = 2;
-    ctx.shadowOffsetY = 4;
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.40)';
+    ctx.shadowBlur = 8;
+    ctx.shadowOffsetX = 1.5;
+    ctx.shadowOffsetY = 3.5;
 
-    // Body: Beveled ivory gradient
+    // Body: Beveled ivory gradient matching the 3D cube face
     const grad = ctx.createLinearGradient(-half, -half, half, half);
     if (isAvailable) {
       grad.addColorStop(0.0, '#ffffff');
@@ -260,7 +301,7 @@ export class Dice3D {
       ctx.beginPath();
       ctx.ellipse(0, -half * 0.45, half * 0.75, half * 0.30, 0, 0, Math.PI * 2);
       const gloss = ctx.createLinearGradient(0, -half, 0, 0);
-      gloss.addColorStop(0.0, 'rgba(255, 255, 255, 0.85)');
+      gloss.addColorStop(0.0, 'rgba(255, 255, 255, 0.75)');
       gloss.addColorStop(1.0, 'rgba(255, 255, 255, 0.0)');
       ctx.fillStyle = gloss;
       ctx.fill();
@@ -268,7 +309,7 @@ export class Dice3D {
     }
 
     // Pips
-    const pipR = Math.max(2.0, size * 0.082);
+    const pipR = Math.max(1.8, size * 0.082);
     ctx.fillStyle = isAvailable ? '#1c1917' : 'rgba(28, 25, 23, 0.28)';
 
     const pips = Dice3D.facePipCoords(value);
@@ -308,8 +349,8 @@ export class Dice3D {
     boardHeight: number,
     _diceIconImg?: HTMLImageElement
   ): { x: number; y: number; width: number; height: number } {
-    const btnW = Math.min(180, boardWidth * 0.16);
-    const btnH = Math.min(54, boardHeight * 0.075);
+    const btnW = Math.min(140, boardWidth * 0.13);
+    const btnH = Math.min(44, boardHeight * 0.065);
     const btnX = boardWidth * 0.65 - btnW / 2; // Right quadrant
     const btnY = boardHeight * 0.50 - btnH / 2;
 
@@ -317,7 +358,7 @@ export class Dice3D {
     // Glowing pulse shadow
     const pulse = 0.5 + 0.5 * Math.sin(performance.now() * 0.005);
     ctx.shadowColor = `rgba(245, 158, 11, ${0.4 + 0.3 * pulse})`;
-    ctx.shadowBlur = 14 + 6 * pulse;
+    ctx.shadowBlur = 12 + 5 * pulse;
     ctx.shadowOffsetY = 2;
 
     // Button body
@@ -334,7 +375,7 @@ export class Dice3D {
     ctx.save();
     Dice3D.roundedRect(ctx, btnX, btnY, btnW, btnH, btnH * 0.35);
     ctx.strokeStyle = '#fef3c7';
-    ctx.lineWidth = 1.5;
+    ctx.lineWidth = 1.3;
     ctx.stroke();
     ctx.restore();
 
@@ -359,21 +400,21 @@ export class Dice3D {
       const u = t / impactT;
       return {
         posFraction: 0.72 * (1.0 - Math.pow(1.0 - u, 1.4)),
-        altitude: 85.0 * (1.0 - u * u),
-        scaleProgress: (85.0 * (1.0 - u * u) / 85.0) * 0.16,
+        altitude: 75.0 * (1.0 - u * u),
+        scaleProgress: (75.0 * (1.0 - u * u) / 75.0) * 0.15,
       };
     } else if (t <= 0.65) {
       const u = (t - impactT) / 0.30;
       return {
         posFraction: 0.72 + 0.18 * (1.0 - Math.pow(1.0 - u, 1.6)),
-        altitude: Math.sin(u * Math.PI) * 18.0,
-        scaleProgress: (Math.sin(u * Math.PI) * 18.0 / 18.0) * 0.05,
+        altitude: Math.sin(u * Math.PI) * 16.0,
+        scaleProgress: (Math.sin(u * Math.PI) * 16.0 / 16.0) * 0.04,
       };
     } else if (t <= 0.83) {
       const u = (t - 0.65) / 0.18;
       return {
         posFraction: 0.90 + 0.08 * (1.0 - Math.pow(1.0 - u, 1.8)),
-        altitude: Math.sin(u * Math.PI) * 5.0,
+        altitude: Math.sin(u * Math.PI) * 4.5,
         scaleProgress: 0.0,
       };
     } else {
@@ -524,7 +565,7 @@ export class Dice3D {
       const q2 = project(cX + uHalfX + vHalfX, cY + uHalfY + vHalfY, cZ + uHalfZ + vHalfZ);
       const q3 = project(cX - uHalfX + vHalfX, cY - uHalfY + vHalfY, cZ - uHalfZ + vHalfZ);
 
-      const light = Math.max(0.65, Math.min(1.0, 0.72 + rotNormal.z * 0.18 - rotNormal.y * 0.10));
+      const light = Math.max(0.68, Math.min(1.0, 0.74 + rotNormal.z * 0.18 - rotNormal.y * 0.08));
 
       const pUx = project(cX + uHalfX, cY + uHalfY, cZ + uHalfZ);
       const pVy = project(cX + vHalfX, cY + vHalfY, cZ + vHalfZ);
@@ -550,23 +591,38 @@ export class Dice3D {
 
     for (const f of visibleFaces) {
       ctx.save();
-      ctx.beginPath();
-      ctx.moveTo(f.q0_x, f.q0_y);
-      ctx.lineTo(f.q1_x, f.q1_y);
-      ctx.lineTo(f.q2_x, f.q2_y);
-      ctx.lineTo(f.q3_x, f.q3_y);
-      ctx.closePath();
 
-      const c = Math.round(248 * f.light);
-      ctx.fillStyle = `rgb(${c}, ${c}, ${c})`;
+      // Rounded beveled polygon for each 3D face (eliminates sharp square corners during spin)
+      Dice3D.drawRoundedQuad(
+        ctx,
+        { x: f.q0_x, y: f.q0_y },
+        { x: f.q1_x, y: f.q1_y },
+        { x: f.q2_x, y: f.q2_y },
+        { x: f.q3_x, y: f.q3_y },
+        0.18
+      );
+
+      // Ivory gradient matching the landed die
+      const grad = ctx.createLinearGradient(f.q0_x, f.q0_y, f.q2_x, f.q2_y);
+      const c0 = Math.round(255 * f.light);
+      const c1 = Math.round(248 * f.light);
+      const c2 = Math.round(228 * f.light);
+      const c3 = Math.round(210 * f.light);
+      grad.addColorStop(0.0, `rgb(${c0}, ${c0}, ${c0})`);
+      grad.addColorStop(0.3, `rgb(${c1}, ${c1}, ${c1})`);
+      grad.addColorStop(0.8, `rgb(${c2}, ${c2}, ${c2})`);
+      grad.addColorStop(1.0, `rgb(${c3}, ${c3}, ${c3})`);
+
+      ctx.fillStyle = grad;
       ctx.fill();
-      ctx.strokeStyle = 'rgba(0, 0, 0, 0.18)';
-      ctx.lineWidth = 1.0;
+
+      ctx.strokeStyle = `rgba(0, 0, 0, ${0.16 * f.light})`;
+      ctx.lineWidth = 1.1;
       ctx.stroke();
 
       // Pips
-      const pipR = Math.max(1.8, s * 0.068);
-      ctx.fillStyle = 'rgba(24, 24, 27, 0.90)';
+      const pipR = Math.max(1.6, s * 0.072);
+      ctx.fillStyle = 'rgba(28, 25, 23, 0.92)';
 
       const pips = Dice3D.facePipCoords(f.value);
       for (const [pu, pv] of pips) {
