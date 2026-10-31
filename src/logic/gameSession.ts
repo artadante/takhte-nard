@@ -15,6 +15,7 @@ import {
   VictoryType
 } from './models';
 import { BoardDiceState } from './dice3D';
+import { CheckerAnimationEngine } from './checkerAnimation';
 import { GameBoard } from './gameBoard';
 import { PlayerPath } from './playerPath';
 import { MoveValidator } from './moveValidator';
@@ -49,6 +50,7 @@ export class GameSession {
   turnNumber: number = 1;
   isRolling: boolean = false;
   isAiMoving: boolean = false;
+  isAnimatingMove: boolean = false;
   statusMessage: string = '';
 
   // Roll-off to determine who starts
@@ -89,6 +91,8 @@ export class GameSession {
     this.remainingDice = [];
     this.isRolling = false;
     this.isAiMoving = false;
+    this.isAnimatingMove = false;
+    CheckerAnimationEngine.shared().clear();
 
     // Roll-off setup
     this.isRollOffActive = true;
@@ -278,7 +282,7 @@ export class GameSession {
   /**
    * Applies single move on board state (no automatic endTurn)
    */
-  private applyMove(option: MoveOption): void {
+  private applyMove(option: MoveOption, skipSound: boolean = false): void {
     // Record undo step
     this.undoStack.push({
       board: this.board.clone(),
@@ -302,10 +306,12 @@ export class GameSession {
       this.board.moveChecker(option.from, option.to, this.currentPlayer);
     }
 
-    if (option.isHit) {
-      SoundManager.shared().playStep();
-    } else {
-      SoundManager.shared().playMove();
+    if (!skipSound) {
+      if (option.isHit) {
+        SoundManager.shared().playStep();
+      } else {
+        SoundManager.shared().playMove();
+      }
     }
 
     // Deduct used dice
@@ -326,17 +332,80 @@ export class GameSession {
   }
 
   /**
+   * Performs smooth animated move before finalizing on board
+   */
+  async animateAndApplyMove(
+    option: MoveOption,
+    fromDragCoords?: { x: number; y: number }
+  ): Promise<void> {
+    const from = option.from;
+    const to = option.to;
+    const color = this.currentPlayer;
+    const isHit = !!option.isHit;
+
+    // Stack indices prior to mutation
+    const fromStackIndex =
+      from === 'bar'
+        ? Math.max(0, this.board.barCount(color) - 1)
+        : Math.max(0, (this.board.stackAt(from)?.count || 1) - 1);
+
+    let toStackIndex = 0;
+    if (to === null) {
+      toStackIndex = this.board.borneOffCount(color);
+    } else {
+      const targetStack = this.board.stackAt(to);
+      if (isHit) {
+        toStackIndex = 0;
+      } else if (targetStack && targetStack.color === color) {
+        toStackIndex = targetStack.count;
+      } else {
+        toStackIndex = 0;
+      }
+    }
+
+    const hitBarIndex = isHit ? this.board.barCount(oppositeColor(color)) : 0;
+    const isDrag = !!fromDragCoords;
+    const duration = isDrag ? 190 : 340;
+
+    CheckerAnimationEngine.shared().startMove({
+      from,
+      to,
+      color,
+      isHit,
+      fromStackIndex,
+      toStackIndex,
+      hitBarIndex,
+      customStartPos: fromDragCoords,
+      duration,
+    });
+
+    this.applyMove(option, true);
+    this.notify();
+
+    // Await animation landing + microscopic settle
+    await new Promise(r => setTimeout(r, duration + 30));
+  }
+
+  /**
    * Human player executes move
    */
-  async humanExecuteMove(option: MoveOption): Promise<void> {
-    this.applyMove(option);
+  async humanExecuteMove(
+    option: MoveOption,
+    fromDragCoords?: { x: number; y: number }
+  ): Promise<void> {
+    if (this.isAnimatingMove) return;
+    this.isAnimatingMove = true;
+
+    await this.animateAndApplyMove(option, fromDragCoords);
+
+    this.isAnimatingMove = false;
 
     if (this.isGameOver) return;
 
     // Check if human turn is finished
     if (this.remainingDice.length === 0 || this.getLegalMoves().length === 0) {
       this.notify();
-      await new Promise(r => setTimeout(r, 400));
+      await new Promise(r => setTimeout(r, 350));
       this.endTurn();
       return;
     }
@@ -345,12 +414,13 @@ export class GameSession {
   }
 
   // Alias for backward compatibility if called from canvas
-  executeMove(option: MoveOption): void {
-    this.humanExecuteMove(option);
+  executeMove(option: MoveOption, fromDragCoords?: { x: number; y: number }): void {
+    this.humanExecuteMove(option, fromDragCoords);
   }
 
   undo(): void {
-    if (this.undoStack.length === 0 || this.isAiMoving || this.isComputerTurn()) return;
+    if (this.undoStack.length === 0 || this.isAiMoving || this.isComputerTurn() || this.isAnimatingMove) return;
+    CheckerAnimationEngine.shared().clear();
     const last = this.undoStack.pop()!;
     this.board = last.board;
     this.remainingDice = last.remainingDice;
@@ -384,12 +454,10 @@ export class GameSession {
     }
 
     const settings = SettingsStore.shared().get();
-    const delayMs = settings.gameSpeed === 'fast' ? 450 : 750;
+    const pauseBetweenMoves = settings.gameSpeed === 'fast' ? 180 : 320;
 
-    // 3. Sequential AI moves
+    // 3. Sequential AI moves with smooth visible animation
     while (this.remainingDice.length > 0 && !this.isGameOver) {
-      await new Promise(r => setTimeout(r, delayMs));
-
       const legal = this.getLegalMoves();
       if (legal.length === 0) break;
 
@@ -399,17 +467,21 @@ export class GameSession {
 
       if (!chosen) break;
 
-      this.applyMove(chosen);
-      this.notify();
+      // Smooth parabolic arc animation for computer move
+      await this.animateAndApplyMove(chosen);
 
       if (this.board.isWinner(this.currentPlayer)) {
         this.isAiMoving = false;
         return;
       }
+
+      if (this.remainingDice.length > 0) {
+        await new Promise(r => setTimeout(r, pauseBetweenMoves));
+      }
     }
 
     // 4. Conclude AI turn
-    await new Promise(r => setTimeout(r, 400));
+    await new Promise(r => setTimeout(r, 350));
     this.isAiMoving = false;
     this.endTurn();
   }

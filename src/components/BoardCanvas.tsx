@@ -15,6 +15,7 @@ import { BoardLayout } from '../logic/boardLayout';
 import { GameSession } from '../logic/gameSession';
 import { BoardPoint, BoardSide, BoardTheme, CheckerColor, MoveOption } from '../logic/models';
 import { Dice3D } from '../logic/dice3D';
+import { CheckerAnimationEngine } from '../logic/checkerAnimation';
 
 interface BoardCanvasProps {
   session: GameSession;
@@ -368,9 +369,15 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
       const checkerImgKey = `${stack.color}_${boardTheme}`;
       const checkerImg = imagesRef.current[checkerImgKey] || imagesRef.current[`${stack.color}_classic`];
 
+      const isAnimTarget = CheckerAnimationEngine.shared().isTargetPoint(raw);
+      const animSlot = CheckerAnimationEngine.shared().getTargetSlot(raw);
+
       for (let idx = 0; idx < count; idx++) {
         if (dragState && dragState.origin === raw && idx === count - 1) {
           continue; // Skip dragged checker
+        }
+        if (isAnimTarget && idx === animSlot) {
+          continue; // Skip checker currently animating in flight to this slot
         }
 
         const offsetY = BoardLayout.stackOffset(idx, diameter, direction);
@@ -419,9 +426,15 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
       const checkerImgKey = `${color}_${boardTheme}`;
       const checkerImg = imagesRef.current[checkerImgKey] || imagesRef.current[`${color}_classic`];
 
+      const isHitBarAnim = CheckerAnimationEngine.shared().isHitBarTarget(color);
+      const hitBarSlot = CheckerAnimationEngine.shared().getHitBarSlot(color);
+
       for (let i = 0; i < count; i++) {
         if (dragState && dragState.origin === 'bar' && dragState.color === color && i === count - 1) {
           continue;
+        }
+        if (isHitBarAnim && i === hitBarSlot) {
+          continue; // Skip hit checker currently flying to the bar
         }
 
         const p = BoardLayout.barPosition(color, i, width, height);
@@ -452,7 +465,14 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
       const checkerImgKey = `${color}_${boardTheme}`;
       const checkerImg = imagesRef.current[checkerImgKey] || imagesRef.current[`${color}_classic`];
 
+      const isBearOffAnim = CheckerAnimationEngine.shared().isBearOffTarget(color);
+      const bearOffSlot = CheckerAnimationEngine.shared().getBearOffSlot(color);
+
       for (let i = 0; i < count; i++) {
+        if (isBearOffAnim && i === bearOffSlot) {
+          continue; // Skip borne-off checker currently flying to tray
+        }
+
         const p = BoardLayout.bearOffPosition(color, i, width, height, boardSide);
         ctx.save();
         ctx.beginPath();
@@ -477,6 +497,16 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
         ctx.restore();
       }
     });
+
+    // 5.5 Render Active Flying Checkers & Hit Blots (60FPS Physics Engine)
+    CheckerAnimationEngine.shared().render(
+      ctx,
+      width,
+      height,
+      imagesRef.current,
+      boardTheme,
+      boardSide
+    );
 
     // 6. DRAW ARROWS & BLUE CIRCLES FOR DESTINATIONS
     if (activeOrigin !== null) {
@@ -680,7 +710,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
 
   // Pointer interactions
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (session.isAiMoving) return;
+    if (session.isAiMoving || session.isAnimatingMove) return;
     const canvas = canvasRef.current!;
     const rect = canvas.getBoundingClientRect();
     const scaleX = canvas.width / rect.width;
@@ -841,9 +871,24 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
         m => m.from === dragState.origin && m.to === chosenTarget!.to
       );
       if (move) {
-        session.executeMove(move);
+        session.executeMove(move, { x: dragState.x, y: dragState.y });
         onSelectPoint(null);
       }
+    } else {
+      // Invalid drop: smooth snap back to origin stack
+      let stackIndex = 0;
+      if (dragState.origin === 'bar') {
+        stackIndex = Math.max(0, session.board.barCount(dragState.color) - 1);
+      } else {
+        stackIndex = Math.max(0, (session.board.stackAt(dragState.origin)?.count || 1) - 1);
+      }
+      CheckerAnimationEngine.shared().startSnapBack({
+        origin: dragState.origin,
+        color: dragState.color,
+        stackIndex,
+        fromPos: { x: dragState.x, y: dragState.y },
+        duration: 160,
+      });
     }
 
     setDragState(null);
