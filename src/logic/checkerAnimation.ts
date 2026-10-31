@@ -97,7 +97,7 @@ export class CheckerAnimationEngine {
       hitBarIndex: options.hitBarIndex ?? 0,
       customStartPos: options.customStartPos,
       startTime: performance.now(),
-      duration: options.duration ?? 340,
+      duration: options.duration ?? 240,
       hasPlayedLandSound: false,
       hasPlayedHitSound: false,
       onComplete: options.onComplete,
@@ -114,7 +114,7 @@ export class CheckerAnimationEngine {
       stackIndex: options.stackIndex,
       fromPos: options.fromPos,
       startTime: performance.now(),
-      duration: options.duration ?? 160,
+      duration: options.duration ?? 140,
     };
     this.activeAnimations.push(anim);
   }
@@ -383,16 +383,20 @@ export class CheckerAnimationEngine {
     const currentDiameter = currentRadius * 2;
     const lift = groundY - renderY;
 
-    // 1. Ground Shadow (stays on board surface, softens & blurs with height)
+    // 1. Ground Shadow (stays on board surface, radial gradient is 100x faster than shadowBlur)
     ctx.save();
     ctx.beginPath();
     const shadowY = groundY + 3 + lift * 0.25;
     const shadowRadius = radius * (1.0 + 0.10 * arc);
-    ctx.arc(curX, shadowY, shadowRadius, 0, Math.PI * 2);
-    ctx.fillStyle = `rgba(0, 0, 0, ${Math.max(0.18, 0.42 - 0.16 * arc)})`;
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.55)';
-    ctx.shadowBlur = Math.round(6 + lift * 0.45);
-    ctx.shadowOffsetY = Math.round(2 + lift * 0.18);
+    const shadowGrad = ctx.createRadialGradient(
+      curX, shadowY, shadowRadius * 0.2,
+      curX, shadowY, shadowRadius * 1.2
+    );
+    shadowGrad.addColorStop(0, `rgba(0, 0, 0, ${Math.max(0.18, 0.42 - 0.16 * arc)})`);
+    shadowGrad.addColorStop(0.7, `rgba(0, 0, 0, ${Math.max(0.06, 0.18 - 0.10 * arc)})`);
+    shadowGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.fillStyle = shadowGrad;
+    ctx.arc(curX, shadowY, shadowRadius * 1.2, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
 
@@ -458,13 +462,19 @@ export class CheckerAnimationEngine {
     const currentDiameter = currentRadius * 2;
     const lift = groundY - renderY;
 
-    // Ground Shadow under hit blot
+    // Ground Shadow under hit blot (fast radial gradient)
     ctx.save();
     ctx.beginPath();
-    ctx.arc(curX, groundY + 3 + lift * 0.2, radius * (0.95 + 0.1 * arc), 0, Math.PI * 2);
-    ctx.fillStyle = `rgba(239, 68, 68, ${0.35 * (1 - arc * 0.4)})`;
-    ctx.shadowColor = 'rgba(239, 68, 68, 0.4)';
-    ctx.shadowBlur = Math.round(8 + lift * 0.4);
+    const hitShadowY = groundY + 3 + lift * 0.2;
+    const hitShadowRadius = radius * (0.95 + 0.15 * arc);
+    const hitGrad = ctx.createRadialGradient(
+      curX, hitShadowY, hitShadowRadius * 0.2,
+      curX, hitShadowY, hitShadowRadius * 1.2
+    );
+    hitGrad.addColorStop(0, `rgba(239, 68, 68, ${0.35 * (1 - arc * 0.3)})`);
+    hitGrad.addColorStop(1, 'rgba(239, 68, 68, 0)');
+    ctx.fillStyle = hitGrad;
+    ctx.arc(curX, hitShadowY, hitShadowRadius * 1.2, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
 

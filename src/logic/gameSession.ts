@@ -151,13 +151,13 @@ export class GameSession {
   private async rollDiceInternal(): Promise<void> {
     const roll = DiceRoll.random();
     this.diceRoll = roll;
-    this.boardDiceState = new BoardDiceState(this.currentPlayer, roll, 1.35);
+    this.boardDiceState = new BoardDiceState(this.currentPlayer, roll, 0.95);
     this.isRolling = true;
     SoundManager.shared().playDiceRoll();
     this.notify();
 
     // Wait for tumble & bounce animation
-    await new Promise(r => setTimeout(r, 1350));
+    await new Promise(r => setTimeout(r, 960));
 
     if (roll.isDouble) {
       this.remainingDice = [roll.die1, roll.die1, roll.die1, roll.die1];
@@ -365,7 +365,7 @@ export class GameSession {
 
     const hitBarIndex = isHit ? this.board.barCount(oppositeColor(color)) : 0;
     const isDrag = !!fromDragCoords;
-    const duration = isDrag ? 190 : 340;
+    const duration = isDrag ? 150 : 240;
 
     CheckerAnimationEngine.shared().startMove({
       from,
@@ -383,7 +383,7 @@ export class GameSession {
     this.notify();
 
     // Await animation landing + microscopic settle
-    await new Promise(r => setTimeout(r, duration + 30));
+    await new Promise(r => setTimeout(r, duration + 20));
   }
 
   /**
@@ -405,7 +405,7 @@ export class GameSession {
     // Check if human turn is finished
     if (this.remainingDice.length === 0 || this.getLegalMoves().length === 0) {
       this.notify();
-      await new Promise(r => setTimeout(r, 350));
+      await new Promise(r => setTimeout(r, 220));
       this.endTurn();
       return;
     }
@@ -447,14 +447,14 @@ export class GameSession {
     if (initialLegal.length === 0) {
       this.statusMessage = 'statusNoAvailableMoves';
       this.notify();
-      await new Promise(r => setTimeout(r, 1400));
+      await new Promise(r => setTimeout(r, 1000));
       this.isAiMoving = false;
       this.endTurn();
       return;
     }
 
     const settings = SettingsStore.shared().get();
-    const pauseBetweenMoves = settings.gameSpeed === 'fast' ? 180 : 320;
+    const pauseBetweenMoves = settings.gameSpeed === 'fast' ? 90 : 150;
 
     // 3. Sequential AI moves with smooth visible animation
     while (this.remainingDice.length > 0 && !this.isGameOver) {
@@ -481,7 +481,7 @@ export class GameSession {
     }
 
     // 4. Conclude AI turn
-    await new Promise(r => setTimeout(r, 350));
+    await new Promise(r => setTimeout(r, 220));
     this.isAiMoving = false;
     this.endTurn();
   }
