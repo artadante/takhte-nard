@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { GameSession } from './logic/gameSession';
 import { BoardCanvas } from './components/BoardCanvas';
-import { DiceZone, SingleDie } from './components/DiceView';
+import { SingleDie } from './components/DiceView';
 import { SettingsModal, RulesModal, StatsModal, VictoryModal, LeaveConfirmModal } from './components/Modals';
 import { LoadingScreen } from './components/LoadingScreen';
 import { MainMenuScreen } from './components/MainMenuScreen';
@@ -69,7 +69,7 @@ export const App: React.FC = () => {
   const blackBarCount = session.board.barCount('black');
 
   const isHumanTurn = session.currentPlayer === 'white';
-  const canRoll = !session.isRollOffActive && isHumanTurn && session.remainingDice.length === 0 && !session.isGameOver;
+  const _canRoll = !session.isRollOffActive && isHumanTurn && session.remainingDice.length === 0 && !session.isGameOver;
 
   const handleStartGame = () => {
     session.startNewGame();
@@ -166,37 +166,17 @@ export const App: React.FC = () => {
               </div>
             </div>
 
-            {/* White Player Dice & Action Controls */}
+            {/* White Player Undo Control */}
             <div className="flex flex-col items-center gap-2 pb-2">
-              {session.currentPlayer === 'white' && !session.isRollOffActive && (
-                <>
-                  <DiceZone
-                    dice={session.remainingDice}
-                    isRolling={session.isRolling}
-                    canRoll={canRoll}
-                    onRollClick={() => session.rollDice()}
-                  />
-
-                  {canRoll && (
-                    <button
-                      onClick={() => session.rollDice()}
-                      className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white font-bold text-xs shadow-lg shadow-emerald-600/30 animate-pulse active:scale-95 transition"
-                    >
-                      🎲 تاس بریزید
-                    </button>
-                  )}
-
-                  {session.undoStack.length > 0 && !session.isAiMoving && (
-                    <button
-                      onClick={() => session.undo()}
-                      className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-white font-bold text-xs shadow-md shadow-amber-600/20 active:scale-95 transition"
-                      title="بازگرداندن مهره"
-                    >
-                      <RotateCcw size={12} />
-                      <span>بازگشت ({session.undoStack.length})</span>
-                    </button>
-                  )}
-                </>
+              {session.undoStack.length > 0 && !session.isAiMoving && (
+                <button
+                  onClick={() => session.undo()}
+                  className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-white font-bold text-xs shadow-md shadow-amber-600/20 active:scale-95 transition"
+                  title="بازگرداندن مهره"
+                >
+                  <RotateCcw size={12} />
+                  <span>بازگشت ({session.undoStack.length})</span>
+                </button>
               )}
             </div>
           </div>
@@ -299,17 +279,7 @@ export const App: React.FC = () => {
               </div>
             </div>
 
-            {/* Black / AI Dice */}
-            <div className="flex flex-col items-center gap-2 pb-2">
-              {session.currentPlayer === 'black' && !session.isRollOffActive && (
-                <DiceZone
-                  dice={session.remainingDice}
-                  isRolling={session.isRolling}
-                  canRoll={false}
-                  onRollClick={() => {}}
-                />
-              )}
-            </div>
+
           </div>
         </div>
       )}

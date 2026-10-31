@@ -14,6 +14,7 @@ import {
   TurnRecordItem,
   VictoryType
 } from './models';
+import { BoardDiceState } from './dice3D';
 import { GameBoard } from './gameBoard';
 import { PlayerPath } from './playerPath';
 import { MoveValidator } from './moveValidator';
@@ -37,6 +38,7 @@ export class GameSession {
   board: GameBoard = GameBoard.initialTraditional();
   currentPlayer: CheckerColor = 'white';
   diceRoll: DiceRoll | null = null;
+  boardDiceState: BoardDiceState | null = null;
   remainingDice: number[] = [];
   selectedPoint: BoardPoint | 'bar' | null = null;
   isGameStarted: boolean = false;
@@ -83,6 +85,7 @@ export class GameSession {
     this.undoStack = [];
     this.turnLog = [];
     this.diceRoll = null;
+    this.boardDiceState = null;
     this.remainingDice = [];
     this.isRolling = false;
     this.isAiMoving = false;
@@ -142,14 +145,15 @@ export class GameSession {
    * Internal dice generator (does NOT trigger computerTurn)
    */
   private async rollDiceInternal(): Promise<void> {
+    const roll = DiceRoll.random();
+    this.diceRoll = roll;
+    this.boardDiceState = new BoardDiceState(this.currentPlayer, roll, 1.35);
     this.isRolling = true;
     SoundManager.shared().playDiceRoll();
     this.notify();
 
-    await new Promise(r => setTimeout(r, 500));
-
-    const roll = DiceRoll.random();
-    this.diceRoll = roll;
+    // Wait for tumble & bounce animation
+    await new Promise(r => setTimeout(r, 1350));
 
     if (roll.isDouble) {
       this.remainingDice = [roll.die1, roll.die1, roll.die1, roll.die1];
@@ -419,6 +423,7 @@ export class GameSession {
     this.turnNumber++;
     this.currentPlayer = oppositeColor(this.currentPlayer);
     this.diceRoll = null;
+    this.boardDiceState = null;
     this.remainingDice = [];
     this.selectedPoint = null;
     this.undoStack = [];

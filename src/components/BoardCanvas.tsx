@@ -14,6 +14,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { BoardLayout } from '../logic/boardLayout';
 import { GameSession } from '../logic/gameSession';
 import { BoardPoint, BoardSide, BoardTheme, CheckerColor, MoveOption } from '../logic/models';
+import { Dice3D } from '../logic/dice3D';
 
 interface BoardCanvasProps {
   session: GameSession;
@@ -46,6 +47,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const rollButtonRectRef = useRef<{ x: number; y: number; width: number; height: number } | null>(null);
 
   const imagesRef = useRef<Record<string, HTMLImageElement>>({});
   const [imagesLoaded, setImagesLoaded] = useState(false);
@@ -72,6 +74,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
       black_wood: './assets/images/marble_black.png',
       white_marble: './assets/images/marble_white.png',
       black_marble: './assets/images/marble_black.png',
+      marble_dicecursor: './assets/images/marble_dicecursor.png',
     };
 
     let loadedCount = 0;
@@ -577,6 +580,38 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
       ctx.restore();
     }
 
+    // 8. RENDER 3D TUMBLING & LANDED DICE IN THE MIDDLE OF THE BOARD
+    if (session.boardDiceState) {
+      Dice3D.renderBoardDice(
+        ctx,
+        session.boardDiceState,
+        width,
+        height,
+        session.remainingDice,
+        session.currentPlayer === 'white'
+      );
+    }
+
+    // 9. RENDER "تاس بریزید" BUTTON ON BOARD IF HUMAN CAN ROLL
+    const canRoll =
+      !session.isRollOffActive &&
+      session.currentPlayer === 'white' &&
+      session.remainingDice.length === 0 &&
+      !session.isGameOver &&
+      !session.isRolling &&
+      !session.isAiMoving;
+
+    if (canRoll) {
+      rollButtonRectRef.current = Dice3D.drawRollButton(
+        ctx,
+        width,
+        height,
+        imagesRef.current['marble_dicecursor']
+      );
+    } else {
+      rollButtonRectRef.current = null;
+    }
+
     ctx.restore();
   };
 
@@ -632,16 +667,61 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
     };
   }, [imagesLoaded, boardTheme, boardSide]);
 
+  // 60FPS continuous animation loop for 3D tumbling dice physics and particle effects
   useEffect(() => {
-    draw();
-  }, [session.board, selectedPoint, legalMoves, dragState, imagesLoaded]);
+    let animId: number;
+    const loop = () => {
+      draw();
+      animId = requestAnimationFrame(loop);
+    };
+    animId = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(animId);
+  }, [session, selectedPoint, legalMoves, dragState, imagesLoaded]);
 
   // Pointer interactions
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (session.isAiMoving) return;
-    const target = getElementAtCoordinates(e.clientX, e.clientY);
     const canvas = canvasRef.current!;
     const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const clickX = (e.clientX - rect.left) * scaleX;
+    const clickY = (e.clientY - rect.top) * scaleY;
+
+    // Check if clicked on Roll Dice button on the board
+    const canRoll =
+      !session.isRollOffActive &&
+      session.currentPlayer === 'white' &&
+      session.remainingDice.length === 0 &&
+      !session.isGameOver &&
+      !session.isRolling &&
+      !session.isAiMoving;
+
+    if (canRoll) {
+      if (rollButtonRectRef.current) {
+        const btn = rollButtonRectRef.current;
+        if (
+          clickX >= btn.x - 20 &&
+          clickX <= btn.x + btn.width + 20 &&
+          clickY >= btn.y - 20 &&
+          clickY <= btn.y + btn.height + 20
+        ) {
+          session.rollDice();
+          return;
+        }
+      }
+      // Also allow tapping anywhere in the center-right quadrant to roll
+      if (
+        clickX >= canvas.width * 0.52 &&
+        clickX <= canvas.width * 0.85 &&
+        Math.abs(clickY - canvas.height * 0.5) < canvas.height * 0.20
+      ) {
+        session.rollDice();
+        return;
+      }
+    }
+
+    const target = getElementAtCoordinates(e.clientX, e.clientY);
 
     if (target === 'bar') {
       const barCount = session.board.barCount(session.currentPlayer);
