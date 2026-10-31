@@ -1,0 +1,24 @@
+{
+  "name": "تخته نرد سنتی ایرانی",
+  "short_name": "تخته نرد",
+  "description": "تخته نرد سنتی اصیل ایرانی با زدن مهره، پیشخوان بار، هوش مصنوعی قدرتمند و گرافیک اصیل",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#0c0a09",
+  "theme_color": "#0c0a09",
+  "icons": [
+    {
+      "src": "icons/icon-128.png",
+      "sizes": "128x128",
+      "type": "image/png"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
