@@ -211,13 +211,9 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
   ) => {
     ctx.save();
 
-    // Outer glow halo (zero shadowBlur penalty for max FPS)
-    ctx.beginPath();
-    ctx.arc(x, y, radius * (isHovered ? 1.35 : 1.15), 0, Math.PI * 2);
-    ctx.fillStyle = isHit
-      ? isHovered ? 'rgba(239, 68, 68, 0.35)' : 'rgba(239, 68, 68, 0.18)'
-      : isHovered ? 'rgba(56, 189, 248, 0.38)' : 'rgba(56, 189, 248, 0.20)';
-    ctx.fill();
+    // Outer glow
+    ctx.shadowColor = isHit ? '#ef4444' : '#38bdf8';
+    ctx.shadowBlur = isHovered ? 18 : 8;
 
     // Fill
     ctx.beginPath();
@@ -237,6 +233,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
     ctx.stroke();
 
     // Die value badge inside target
+    ctx.shadowBlur = 0;
     ctx.font = `bold ${Math.round(radius * 0.75)}px sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -342,8 +339,6 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
 
     ctx.save();
     ctx.scale(dpr, dpr);
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = 'medium';
     ctx.clearRect(0, 0, width, height);
 
     // 1. Board background
@@ -590,11 +585,9 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
       const checkerImg = imagesRef.current[checkerImgKey] || imagesRef.current[`${dragState.color}_classic`];
 
       ctx.save();
-      // Fast drop shadow (zero shadowBlur GPU penalty)
-      ctx.beginPath();
-      ctx.arc(dragState.x + 2, dragState.y + 6, radius * 1.15, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.40)';
-      ctx.fill();
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.6)';
+      ctx.shadowBlur = 16;
+      ctx.shadowOffsetY = 8;
 
       if (checkerImg && checkerImg.complete) {
         ctx.drawImage(
@@ -675,15 +668,10 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
     renderWidth = Math.floor(renderWidth);
     renderHeight = Math.floor(renderHeight);
 
-    // Optimize for desktop PC: clamp DPR so internal canvas buffer never exceeds 1920x1200
-    const dprRaw = window.devicePixelRatio || 1;
-    let dpr = Math.min(dprRaw, 1.25);
-    if (renderWidth * dpr > 1920) {
-      dpr = 1920 / renderWidth;
-    }
+    const dpr = window.devicePixelRatio || 1;
 
-    canvas.width = Math.round(renderWidth * dpr);
-    canvas.height = Math.round(renderHeight * dpr);
+    canvas.width = renderWidth * dpr;
+    canvas.height = renderHeight * dpr;
     canvas.style.width = `${renderWidth}px`;
     canvas.style.height = `${renderHeight}px`;
 
@@ -709,21 +697,16 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
     };
   }, [imagesLoaded, boardTheme, boardSide]);
 
-  const drawRef = useRef(draw);
-  useEffect(() => {
-    drawRef.current = draw;
-  });
-
-  // 60FPS continuous animation loop decoupled from React state churn
+  // 60FPS continuous animation loop for 3D tumbling dice physics and particle effects
   useEffect(() => {
     let animId: number;
     const loop = () => {
-      drawRef.current();
+      draw();
       animId = requestAnimationFrame(loop);
     };
     animId = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(animId);
-  }, []);
+  }, [session, selectedPoint, legalMoves, dragState, imagesLoaded]);
 
   // Pointer interactions
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {

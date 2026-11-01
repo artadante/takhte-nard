@@ -36,7 +36,7 @@ export class BoardDiceState {
   public spin_yaw2: number;
   public start_time_us: number;
 
-  constructor(color: CheckerColor, roll: DiceRoll, duration: number = 0.95) {
+  constructor(color: CheckerColor, roll: DiceRoll, duration: number = 1.30) {
     this.id = Math.random().toString(36).substring(2, 9);
     this.color = color;
     this.roll = roll;
@@ -264,12 +264,12 @@ export class Dice3D {
     const half = size / 2.0;
     const r = size * 0.18;
 
-    // 1. Soft drop shadow on felt (fast GPU-friendly path)
+    // 1. Soft drop shadow on felt
     ctx.save();
-    Dice3D.roundedRect(ctx, -half + 1.5, -half + 3.0, size, size, r);
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.32)';
-    ctx.fill();
-    ctx.restore();
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.40)';
+    ctx.shadowBlur = 8;
+    ctx.shadowOffsetX = 1.5;
+    ctx.shadowOffsetY = 3.5;
 
     // Body: Beveled ivory gradient matching the 3D cube face
     const grad = ctx.createLinearGradient(-half, -half, half, half);
@@ -354,24 +354,14 @@ export class Dice3D {
     const btnX = boardWidth * 0.65 - btnW / 2; // Right quadrant
     const btnY = boardHeight * 0.50 - btnH / 2;
 
-    // Glowing pulse halo (lightweight, zero shadowBlur GPU penalty)
-    const pulse = 0.5 + 0.5 * Math.sin(performance.now() * 0.005);
-    const expand = 3.0 * pulse;
     ctx.save();
-    Dice3D.roundedRect(
-      ctx,
-      btnX - expand,
-      btnY - expand,
-      btnW + expand * 2,
-      btnH + expand * 2,
-      (btnH + expand * 2) * 0.35
-    );
-    ctx.fillStyle = `rgba(245, 158, 11, ${0.25 + 0.18 * pulse})`;
-    ctx.fill();
-    ctx.restore();
+    // Glowing pulse shadow
+    const pulse = 0.5 + 0.5 * Math.sin(performance.now() * 0.005);
+    ctx.shadowColor = `rgba(245, 158, 11, ${0.4 + 0.3 * pulse})`;
+    ctx.shadowBlur = 12 + 5 * pulse;
+    ctx.shadowOffsetY = 2;
 
     // Button body
-    ctx.save();
     const grad = ctx.createLinearGradient(btnX, btnY, btnX, btnY + btnH);
     grad.addColorStop(0.0, '#f59e0b'); // amber-500
     grad.addColorStop(1.0, '#d97706'); // amber-600
